@@ -1,0 +1,9 @@
+# This is a placeholder file for user.png
+# In a real application, this would be an actual PNG image file
+# For now, we'll create a simple SVG placeholder
+
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 150 150">
+  <circle cx="75" cy="75" r="75" fill="#e0e0e0"/>
+  <circle cx="75" cy="55" r="25" fill="#bdbdbd"/>
+  <path d="M75 85 Q50 85 35 110 L115 110 Q100 85 75 85" fill="#bdbdbd"/>
+</svg>

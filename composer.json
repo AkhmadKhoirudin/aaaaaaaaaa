@@ -1,0 +1,13 @@
+{
+    "name": "cbt/online",
+    "description": "CBT Online Application",
+    "type": "project",
+    "require": {
+        "phpoffice/phpspreadsheet": "^1.29"
+    },
+    "autoload": {
+        "psr-4": {
+            "": "./"
+        }
+    }
+}
