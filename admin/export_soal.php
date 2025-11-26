@@ -154,4 +154,4 @@ $paket_soal = $stmt->fetchAll();
     </section>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php include 'includes/footer-modern.php'; ?>

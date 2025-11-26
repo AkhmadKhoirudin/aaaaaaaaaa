@@ -186,14 +186,15 @@ $soal = $pdo->prepare("SELECT bs.*, mp.nama_mapel, k.nama_kelas, u.nama_lengkap 
 $soal->execute($params);
 $soal = $soal->fetchAll();
 
-include 'includes/header.php';
+// Set page title
+$page_title = 'Bank Soal';
+
+include 'includes/header-modern.php';
 ?>
 
 <div class="container-fluid">
     <div class="row">
-        <?php include 'includes/sidebar.php'; ?>
-        
-        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+        <main class="col-md-12 ms-sm-auto col-lg-12 px-md-4">
             <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                 <h1 class="h2">Bank Soal</h1>
                 <div class="btn-toolbar mb-2 mb-md-0">
@@ -482,4 +483,8 @@ document.querySelector('select[name="jenis_soal"]').addEventListener('change', f
 });
 </script>
 
-<?php include 'includes/footer.php'; ?>
+        </main>
+    </div>
+</div>
+
+<?php include 'includes/footer-modern.php'; ?>

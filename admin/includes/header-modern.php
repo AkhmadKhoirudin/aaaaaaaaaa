@@ -7,7 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 // Ambil informasi user
 $user_nama = $_SESSION['nama_lengkap'] ?? 'User';
 $user_role = $_SESSION['role'] ?? 'admin';
-$user_avatar = 'assets/img/user.png';
+$user_avatar = '../assets/img/user.png';
 
 // Definisikan menu berdasarkan role
 $menu_items = [

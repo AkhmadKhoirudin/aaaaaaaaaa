@@ -1,4 +1,9 @@
 <?php
+// Pastikan session dimulai sebelum semua operasi
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once '../includes/functions.php';
 require_once '../config/database.php';
 
@@ -11,17 +16,28 @@ if (!hasRole(['admin', 'operator'])) {
 // Proses form
 if ($_POST) {
     if (isset($_POST['tambah_ruang'])) {
-        $kode_ruang = $_POST['kode_ruang'];
         $nama_ruang = $_POST['nama_ruang'];
         $kapasitas = $_POST['kapasitas'];
+        
+        // Generate kode ruang otomatis dari nama ruang
+        $kode_ruang = generateKodeRuang($nama_ruang);
         
         try {
             $stmt = $pdo->prepare("INSERT INTO ruang_ujian (kode_ruang, nama_ruang, kapasitas) VALUES (?, ?, ?)");
             $stmt->execute([$kode_ruang, $nama_ruang, $kapasitas]);
             
-            $_SESSION['success'] = 'Ruang ujian berhasil ditambahkan';
+            $_SESSION['success'] = 'Ruang ujian berhasil ditambahkan dengan kode: ' . $kode_ruang;
         } catch (PDOException $e) {
-            $_SESSION['error'] = 'Kode ruang sudah ada';
+            // Jika kode sudah ada, coba dengan kode alternatif
+            $kode_ruang = generateKodeRuangAlternatif($nama_ruang);
+            try {
+                $stmt = $pdo->prepare("INSERT INTO ruang_ujian (kode_ruang, nama_ruang, kapasitas) VALUES (?, ?, ?)");
+                $stmt->execute([$kode_ruang, $nama_ruang, $kapasitas]);
+                
+                $_SESSION['success'] = 'Ruang ujian berhasil ditambahkan dengan kode: ' . $kode_ruang;
+            } catch (PDOException $e2) {
+                $_SESSION['error'] = 'Gagal menambahkan ruang ujian. Silakan coba lagi.';
+            }
         }
         
         header('Location: ruang.php');
@@ -68,6 +84,56 @@ if ($_POST) {
     }
 }
 
+// Fungsi untuk generate kode ruang otomatis
+function generateKodeRuang($nama_ruang) {
+    global $pdo;
+    
+    // Ambil 3 huruf pertama dari nama ruang dan ubah menjadi uppercase
+    $kode = strtoupper(substr(str_replace(' ', '', $nama_ruang), 0, 3));
+    
+    // Jika kurang dari 3 huruf, tambahkan angka
+    if (strlen($kode) < 3) {
+        $kode .= str_pad(rand(1, 99), 2, '0', STR_PAD_LEFT);
+    }
+    
+    // Cek apakah kode sudah ada di database
+    $check = $pdo->prepare("SELECT COUNT(*) FROM ruang_ujian WHERE kode_ruang = ?");
+    $check->execute([$kode]);
+    $count = $check->fetchColumn();
+    
+    // Jika kode sudah ada, gunakan fungsi alternatif
+    if ($count > 0) {
+        return generateKodeRuangAlternatif($nama_ruang);
+    }
+    
+    return $kode;
+}
+
+// Fungsi untuk generate kode ruang alternatif jika kode pertama sudah ada
+function generateKodeRuangAlternatif($nama_ruang) {
+    global $pdo;
+    
+    // Ambil 3 huruf pertama dari nama ruang
+    $base_kode = strtoupper(substr(str_replace(' ', '', $nama_ruang), 0, 3));
+    
+    // Coba tambahkan angka 1-99
+    for ($i = 1; $i <= 99; $i++) {
+        $kode = $base_kode . str_pad($i, 2, '0', STR_PAD_LEFT);
+        
+        // Cek apakah kode sudah ada
+        $check = $pdo->prepare("SELECT COUNT(*) FROM ruang_ujian WHERE kode_ruang = ?");
+        $check->execute([$kode]);
+        $count = $check->fetchColumn();
+        
+        if ($count == 0) {
+            return $kode;
+        }
+    }
+    
+    // Jika masih tidak ada, tambahkan timestamp
+    return $base_kode . date('is');
+}
+
 // Ambil data ruang ujian
 $ruang = $pdo->query("SELECT r.*, COUNT(j.id) as jumlah_jadwal 
                       FROM ruang_ujian r 
@@ -75,8 +141,10 @@ $ruang = $pdo->query("SELECT r.*, COUNT(j.id) as jumlah_jadwal
                       GROUP BY r.id 
                       ORDER BY r.kode_ruang")->fetchAll();
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Manajemen Ruang Ujian';
+
+include 'includes/header-modern.php';
 ?>
 
 <div class="content-wrapper">
@@ -99,16 +167,16 @@ include 'includes/sidebar.php';
     <section class="content">
         <div class="container-fluid">
             <?php if (isset($_SESSION['success'])): ?>
-                <div class="alert alert-success alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
                     <?= $_SESSION['success']; unset($_SESSION['success']); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             <?php endif; ?>
             
             <?php if (isset($_SESSION['error'])): ?>
-                <div class="alert alert-danger alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     <?= $_SESSION['error']; unset($_SESSION['error']); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             <?php endif; ?>
 
@@ -144,7 +212,7 @@ include 'includes/sidebar.php';
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Daftar Ruang Ujian</h3>
-                            <button type="button" class="btn btn-primary float-right" data-toggle="modal" data-target="#tambahModal">
+                            <button type="button" class="btn btn-primary float-right" data-bs-toggle="modal" data-bs-target="#tambahModal">
                                 <i class="fas fa-plus"></i> Tambah Ruang
                             </button>
                         </div>
@@ -174,25 +242,25 @@ include 'includes/sidebar.php';
                                                 <span class="badge badge-info"><?= $r['jumlah_jadwal'] ?> jadwal</span>
                                             </td>
                                             <td>
-                                                <button type="button" class="btn btn-sm btn-warning" 
-                                                        data-toggle="modal" data-target="#editModal<?= $r['id'] ?>">
+                                                <button type="button" class="btn btn-sm btn-warning"
+                                                        data-bs-toggle="modal" data-bs-target="#editModal<?= $r['id'] ?>">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
-                                                <button type="button" class="btn btn-sm btn-danger" 
-                                                        data-toggle="modal" data-target="#hapusModal<?= $r['id'] ?>">
+                                                <button type="button" class="btn btn-sm btn-danger"
+                                                        data-bs-toggle="modal" data-bs-target="#hapusModal<?= $r['id'] ?>">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             </td>
                                         </tr>
                                         
                                         <!-- Modal Edit -->
-                                        <div class="modal fade" id="editModal<?= $r['id'] ?>">
+                                        <div class="modal fade" id="editModal<?= $r['id'] ?>" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <form method="POST">
                                                         <div class="modal-header">
                                                             <h4 class="modal-title">Edit Ruang Ujian</h4>
-                                                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                         </div>
                                                         <div class="modal-body">
                                                             <input type="hidden" name="id" value="<?= $r['id'] ?>">
@@ -213,7 +281,7 @@ include 'includes/sidebar.php';
                                                             </div>
                                                         </div>
                                                         <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                                                             <button type="submit" name="edit_ruang" class="btn btn-primary">Simpan</button>
                                                         </div>
                                                     </form>
@@ -222,13 +290,13 @@ include 'includes/sidebar.php';
                                         </div>
                                         
                                         <!-- Modal Hapus -->
-                                        <div class="modal fade" id="hapusModal<?= $r['id'] ?>">
+                                        <div class="modal fade" id="hapusModal<?= $r['id'] ?>" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <form method="POST">
                                                         <div class="modal-header">
                                                             <h4 class="modal-title">Konfirmasi Hapus</h4>
-                                                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                         </div>
                                                         <div class="modal-body">
                                                             <input type="hidden" name="id" value="<?= $r['id'] ?>">
@@ -242,8 +310,8 @@ include 'includes/sidebar.php';
                                                             <?php endif; ?>
                                                         </div>
                                                         <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
-                                                            <button type="submit" name="hapus_ruang" class="btn btn-danger" 
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                                                            <button type="submit" name="hapus_ruang" class="btn btn-danger"
                                                                     <?= $r['jumlah_jadwal'] > 0 ? 'disabled' : '' ?>>Hapus</button>
                                                         </div>
                                                     </form>
@@ -263,30 +331,27 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- Modal Tambah -->
-<div class="modal fade" id="tambahModal">
+<div class="modal fade" id="tambahModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
                 <div class="modal-header">
                     <h4 class="modal-title">Tambah Ruang Ujian Baru</h4>
-                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
-                        <label>Kode Ruang</label>
-                        <input type="text" name="kode_ruang" class="form-control" required>
-                    </div>
-                    <div class="form-group">
                         <label>Nama Ruang</label>
-                        <input type="text" name="nama_ruang" class="form-control" required>
+                        <input type="text" name="nama_ruang" class="form-control" required minlength="3" placeholder="Contoh: Ruang Teori 1, Lab Komputer">
+                        <small class="form-text text-muted">Kode ruang akan otomatis dibuat dari nama ruang</small>
                     </div>
                     <div class="form-group">
                         <label>Kapasitas</label>
-                        <input type="number" name="kapasitas" class="form-control" min="1" required>
+                        <input type="number" name="kapasitas" class="form-control" min="1" max="200" required placeholder="Jumlah peserta maksimal">
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                     <button type="submit" name="tambah_ruang" class="btn btn-primary">Simpan</button>
                 </div>
             </form>
@@ -294,4 +359,44 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<!-- JavaScript untuk validasi dan enhancement -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Validasi form tambah ruang
+    const tambahForm = document.querySelector('#tambahModal form');
+    if (tambahForm) {
+        tambahForm.addEventListener('submit', function(e) {
+            const namaRuang = this.nama_ruang.value.trim();
+            const kapasitas = parseInt(this.kapasitas.value);
+            
+            if (!namaRuang || !kapasitas) {
+                e.preventDefault();
+                alert('Nama ruang dan kapasitas harus diisi!');
+                return false;
+            }
+            
+            if (namaRuang.length < 3) {
+                e.preventDefault();
+                alert('Nama Ruang minimal 3 karakter!');
+                return false;
+            }
+            
+            if (kapasitas < 1 || kapasitas > 200) {
+                e.preventDefault();
+                alert('Kapasitas harus antara 1-200 peserta!');
+                return false;
+            }
+        });
+    }
+    
+    // Auto-focus pada input nama ruang saat modal dibuka
+    const tambahModal = document.getElementById('tambahModal');
+    if (tambahModal) {
+        tambahModal.addEventListener('shown.bs.modal', function() {
+            this.querySelector('input[name="nama_ruang"]').focus();
+        });
+    }
+});
+</script>
+
+<?php include 'includes/footer-modern.php'; ?>

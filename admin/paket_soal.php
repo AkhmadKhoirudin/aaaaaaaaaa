@@ -1,4 +1,9 @@
 <?php
+// Pastikan session dimulai sebelum semua operasi
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once '../includes/functions.php';
 require_once '../config/database.php';
 
@@ -11,8 +16,6 @@ if (!hasRole(['admin', 'operator', 'guru'])) {
 // Proses form
 if ($_POST) {
     if (isset($_POST['tambah_paket'])) {
-        $kode_paket = $_POST['kode_paket'];
-        $nama_paket = $_POST['nama_paket'];
         $mata_pelajaran_id = $_POST['mata_pelajaran_id'];
         $kelas_id = $_POST['kelas_id'];
         $jumlah_soal = $_POST['jumlah_soal'];
@@ -23,17 +26,43 @@ if ($_POST) {
         $acak_jawaban = isset($_POST['acak_jawaban']) ? 1 : 0;
         $tampilkan_nilai = isset($_POST['tampilkan_nilai']) ? 1 : 0;
         
+        // Ambil nama mata pelajaran dan kelas untuk generate kode dan nama otomatis
+        $mapel = $pdo->prepare("SELECT nama_mapel FROM mata_pelajaran WHERE id = ?");
+        $mapel->execute([$mata_pelajaran_id]);
+        $nama_mapel = $mapel->fetchColumn();
+        
+        $kelas = $pdo->prepare("SELECT nama_kelas FROM kelas WHERE id = ?");
+        $kelas->execute([$kelas_id]);
+        $nama_kelas = $kelas->fetchColumn();
+        
+        // Generate kode dan nama paket otomatis
+        $kode_paket = generateKodePaket($nama_mapel, $nama_kelas);
+        $nama_paket = generateNamaPaket($nama_mapel, $nama_kelas, $tanggal_mulai);
+        
         try {
-            $stmt = $pdo->prepare("INSERT INTO paket_soal 
-                                 (kode_paket, nama_paket, mata_pelajaran_id, kelas_id, jumlah_soal, 
-                                  durasi_menit, tanggal_mulai, tanggal_selesai, acak_soal, acak_jawaban, tampilkan_nilai) 
+            $stmt = $pdo->prepare("INSERT INTO paket_soal
+                                 (kode_paket, nama_paket, mata_pelajaran_id, kelas_id, jumlah_soal,
+                                  durasi_menit, tanggal_mulai, tanggal_selesai, acak_soal, acak_jawaban, tampilkan_nilai)
                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$kode_paket, $nama_paket, $mata_pelajaran_id, $kelas_id, $jumlah_soal,
                            $durasi_menit, $tanggal_mulai, $tanggal_selesai, $acak_soal, $acak_jawaban, $tampilkan_nilai]);
             
-            $_SESSION['success'] = 'Paket soal berhasil ditambahkan';
+            $_SESSION['success'] = 'Paket soal berhasil ditambahkan dengan kode: ' . $kode_paket;
         } catch (PDOException $e) {
-            $_SESSION['error'] = 'Kode paket sudah ada';
+            // Jika kode sudah ada, coba dengan kode alternatif
+            $kode_paket = generateKodePaketAlternatif($nama_mapel, $nama_kelas);
+            try {
+                $stmt = $pdo->prepare("INSERT INTO paket_soal
+                                     (kode_paket, nama_paket, mata_pelajaran_id, kelas_id, jumlah_soal,
+                                      durasi_menit, tanggal_mulai, tanggal_selesai, acak_soal, acak_jawaban, tampilkan_nilai)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$kode_paket, $nama_paket, $mata_pelajaran_id, $kelas_id, $jumlah_soal,
+                               $durasi_menit, $tanggal_mulai, $tanggal_selesai, $acak_soal, $acak_jawaban, $tampilkan_nilai]);
+                
+                $_SESSION['success'] = 'Paket soal berhasil ditambahkan dengan kode: ' . $kode_paket;
+            } catch (PDOException $e2) {
+                $_SESSION['error'] = 'Gagal menambahkan paket soal. Silakan coba lagi.';
+            }
         }
         
         header('Location: paket_soal.php');
@@ -94,6 +123,65 @@ if ($_POST) {
     }
 }
 
+// Fungsi untuk generate kode paket otomatis
+function generateKodePaket($nama_mapel, $nama_kelas) {
+    global $pdo;
+    
+    // Ambil 3 huruf pertama dari nama mapel dan 2 huruf dari nama kelas
+    $mapel_kode = strtoupper(substr(str_replace(' ', '', $nama_mapel), 0, 3));
+    $kelas_kode = strtoupper(substr(str_replace(' ', '', $nama_kelas), 0, 2));
+    
+    // Gabungkan dan tambahkan angka
+    $kode = $mapel_kode . $kelas_kode . date('m');
+    
+    // Cek apakah kode sudah ada di database
+    $check = $pdo->prepare("SELECT COUNT(*) FROM paket_soal WHERE kode_paket = ?");
+    $check->execute([$kode]);
+    $count = $check->fetchColumn();
+    
+    // Jika kode sudah ada, gunakan fungsi alternatif
+    if ($count > 0) {
+        return generateKodePaketAlternatif($nama_mapel, $nama_kelas);
+    }
+    
+    return $kode;
+}
+
+// Fungsi untuk generate kode paket alternatif jika kode pertama sudah ada
+function generateKodePaketAlternatif($nama_mapel, $nama_kelas) {
+    global $pdo;
+    
+    // Ambil 3 huruf pertama dari nama mapel dan 2 huruf dari nama kelas
+    $mapel_kode = strtoupper(substr(str_replace(' ', '', $nama_mapel), 0, 3));
+    $kelas_kode = strtoupper(substr(str_replace(' ', '', $nama_kelas), 0, 2));
+    
+    // Coba tambahkan angka 1-99
+    for ($i = 1; $i <= 99; $i++) {
+        $kode = $mapel_kode . $kelas_kode . str_pad($i, 2, '0', STR_PAD_LEFT);
+        
+        // Cek apakah kode sudah ada
+        $check = $pdo->prepare("SELECT COUNT(*) FROM paket_soal WHERE kode_paket = ?");
+        $check->execute([$kode]);
+        $count = $check->fetchColumn();
+        
+        if ($count == 0) {
+            return $kode;
+        }
+    }
+    
+    // Jika masih tidak ada, tambahkan timestamp
+    return $mapel_kode . $kelas_kode . date('is');
+}
+
+// Fungsi untuk generate nama paket otomatis
+function generateNamaPaket($nama_mapel, $nama_kelas, $tanggal_mulai) {
+    // Format: Ujian [Mapel] Kelas [Kelas] - [Bulan Tahun]
+    $tanggal = new DateTime($tanggal_mulai);
+    $bulan_tahun = $tanggal->format('F Y');
+    
+    return "Ujian " . $nama_mapel . " Kelas " . $nama_kelas . " - " . $bulan_tahun;
+}
+
 // Ambil data untuk filter
 $mata_pelajaran = $pdo->query("SELECT * FROM mata_pelajaran ORDER BY nama_mapel")->fetchAll();
 $kelas = $pdo->query("SELECT * FROM kelas ORDER BY nama_kelas")->fetchAll();
@@ -122,8 +210,10 @@ $paket = $pdo->prepare("SELECT ps.*, mp.nama_mapel, k.nama_kelas,
 $paket->execute($params);
 $paket = $paket->fetchAll();
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Manajemen Paket Soal';
+
+include 'includes/header-modern.php';
 ?>
 
 <div class="content-wrapper">
@@ -146,16 +236,16 @@ include 'includes/sidebar.php';
     <section class="content">
         <div class="container-fluid">
             <?php if (isset($_SESSION['success'])): ?>
-                <div class="alert alert-success alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
                     <?= $_SESSION['success']; unset($_SESSION['success']); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             <?php endif; ?>
             
             <?php if (isset($_SESSION['error'])): ?>
-                <div class="alert alert-danger alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     <?= $_SESSION['error']; unset($_SESSION['error']); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             <?php endif; ?>
 
@@ -164,7 +254,7 @@ include 'includes/sidebar.php';
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Daftar Paket Soal</h3>
-                            <button type="button" class="btn btn-primary float-right" data-toggle="modal" data-target="#tambahModal">
+                            <button type="button" class="btn btn-primary float-right" data-bs-toggle="modal" data-bs-target="#tambahModal">
                                 <i class="fas fa-plus"></i> Tambah Paket
                             </button>
                         </div>
@@ -220,25 +310,25 @@ include 'includes/sidebar.php';
                                                 <a href="jadwal_ujian.php?paket_id=<?= $p['id'] ?>" class="btn btn-sm btn-info">
                                                     <i class="fas fa-calendar"></i> Jadwal
                                                 </a>
-                                                <button type="button" class="btn btn-sm btn-warning" 
-                                                        data-toggle="modal" data-target="#editModal<?= $p['id'] ?>">
+                                                <button type="button" class="btn btn-sm btn-warning"
+                                                        data-bs-toggle="modal" data-bs-target="#editModal<?= $p['id'] ?>">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
-                                                <button type="button" class="btn btn-sm btn-danger" 
-                                                        data-toggle="modal" data-target="#hapusModal<?= $p['id'] ?>">
+                                                <button type="button" class="btn btn-sm btn-danger"
+                                                        data-bs-toggle="modal" data-bs-target="#hapusModal<?= $p['id'] ?>">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             </td>
                                         </tr>
                                         
                                         <!-- Modal Edit -->
-                                        <div class="modal fade" id="editModal<?= $p['id'] ?>">
+                                        <div class="modal fade" id="editModal<?= $p['id'] ?>" tabindex="-1">
                                             <div class="modal-dialog modal-lg">
                                                 <div class="modal-content">
                                                     <form method="POST">
                                                         <div class="modal-header">
                                                             <h4 class="modal-title">Edit Paket Soal</h4>
-                                                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                         </div>
                                                         <div class="modal-body">
                                                             <input type="hidden" name="id" value="<?= $p['id'] ?>">
@@ -326,7 +416,7 @@ include 'includes/sidebar.php';
                                                             </div>
                                                         </div>
                                                         <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                                                             <button type="submit" name="edit_paket" class="btn btn-primary">Simpan</button>
                                                         </div>
                                                     </form>
@@ -335,13 +425,13 @@ include 'includes/sidebar.php';
                                         </div>
                                         
                                         <!-- Modal Hapus -->
-                                        <div class="modal fade" id="hapusModal<?= $p['id'] ?>">
+                                        <div class="modal fade" id="hapusModal<?= $p['id'] ?>" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <form method="POST">
                                                         <div class="modal-header">
                                                             <h4 class="modal-title">Konfirmasi Hapus</h4>
-                                                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                         </div>
                                                         <div class="modal-body">
                                                             <input type="hidden" name="id" value="<?= $p['id'] ?>">
@@ -355,8 +445,8 @@ include 'includes/sidebar.php';
                                                             <?php endif; ?>
                                                         </div>
                                                         <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
-                                                            <button type="submit" name="hapus_paket" class="btn btn-danger" 
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                                                            <button type="submit" name="hapus_paket" class="btn btn-danger"
                                                                     <?= $p['jumlah_jadwal'] > 0 ? 'disabled' : '' ?>>Hapus</button>
                                                         </div>
                                                     </form>
@@ -376,25 +466,17 @@ include 'includes/sidebar.php';
 </div>
 
 <!-- Modal Tambah Paket -->
-<div class="modal fade" id="tambahModal">
+<div class="modal fade" id="tambahModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form method="POST">
                 <div class="modal-header">
                     <h4 class="modal-title">Tambah Paket Soal Baru</h4>
-                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <div class="form-group">
-                                <label>Kode Paket</label>
-                                <input type="text" name="kode_paket" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Nama Paket</label>
-                                <input type="text" name="nama_paket" class="form-control" required>
-                            </div>
                             <div class="form-group">
                                 <label>Mata Pelajaran</label>
                                 <select name="mata_pelajaran_id" class="form-control" required>
@@ -413,16 +495,16 @@ include 'includes/sidebar.php';
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                        </div>
-                        <div class="col-md-6">
                             <div class="form-group">
                                 <label>Jumlah Soal</label>
-                                <input type="number" name="jumlah_soal" class="form-control" min="1" required>
+                                <input type="number" name="jumlah_soal" class="form-control" min="1" max="100" required placeholder="Jumlah soal dalam paket">
                             </div>
                             <div class="form-group">
                                 <label>Durasi (menit)</label>
-                                <input type="number" name="durasi_menit" class="form-control" min="1" required>
+                                <input type="number" name="durasi_menit" class="form-control" min="15" max="180" required placeholder="Durasi pengerjaan">
                             </div>
+                        </div>
+                        <div class="col-md-6">
                             <div class="form-group">
                                 <label>Tanggal Mulai</label>
                                 <input type="datetime-local" name="tanggal_mulai" class="form-control" required>
@@ -430,6 +512,11 @@ include 'includes/sidebar.php';
                             <div class="form-group">
                                 <label>Tanggal Selesai</label>
                                 <input type="datetime-local" name="tanggal_selesai" class="form-control" required>
+                            </div>
+                            <div class="alert alert-info">
+                                <small>
+                                    <strong>Info:</strong> Kode paket dan nama paket akan otomatis dibuat berdasarkan mata pelajaran, kelas, dan tanggal.
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -457,7 +544,7 @@ include 'includes/sidebar.php';
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                     <button type="submit" name="tambah_paket" class="btn btn-primary">Simpan</button>
                 </div>
             </form>
@@ -465,4 +552,65 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<!-- JavaScript untuk validasi dan enhancement -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Validasi form tambah paket
+    const tambahForm = document.querySelector('#tambahModal form');
+    if (tambahForm) {
+        tambahForm.addEventListener('submit', function(e) {
+            const mataPelajaranId = this.mata_pelajaran_id.value;
+            const kelasId = this.kelas_id.value;
+            const jumlahSoal = parseInt(this.jumlah_soal.value);
+            const durasiMenit = parseInt(this.durasi_menit.value);
+            const tanggalMulai = this.tanggal_mulai.value;
+            const tanggalSelesai = this.tanggal_selesai.value;
+            
+            if (!mataPelajaranId || !kelasId || !jumlahSoal || !durasiMenit || !tanggalMulai || !tanggalSelesai) {
+                e.preventDefault();
+                alert('Semua field harus diisi!');
+                return false;
+            }
+            
+            if (jumlahSoal < 1 || jumlahSoal > 100) {
+                e.preventDefault();
+                alert('Jumlah soal harus antara 1-100!');
+                return false;
+            }
+            
+            if (durasiMenit < 15 || durasiMenit > 180) {
+                e.preventDefault();
+                alert('Durasi harus antara 15-180 menit!');
+                return false;
+            }
+            
+            // Validasi tanggal
+            const mulaiDate = new Date(tanggalMulai);
+            const selesaiDate = new Date(tanggalSelesai);
+            const now = new Date();
+            
+            if (mulaiDate >= selesaiDate) {
+                e.preventDefault();
+                alert('Tanggal selesai harus lebih besar dari tanggal mulai!');
+                return false;
+            }
+            
+            if (selesaiDate <= now) {
+                e.preventDefault();
+                alert('Tanggal selesai harus lebih besar dari waktu sekarang!');
+                return false;
+            }
+        });
+    }
+    
+    // Auto-focus pada input mata pelajaran saat modal dibuka
+    const tambahModal = document.getElementById('tambahModal');
+    if (tambahModal) {
+        tambahModal.addEventListener('shown.bs.modal', function() {
+            this.querySelector('select[name="mata_pelajaran_id"]').focus();
+        });
+    }
+});
+</script>
+
+<?php include 'includes/footer-modern.php'; ?>

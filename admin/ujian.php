@@ -9,14 +9,17 @@ if (!hasRole(['admin', 'operator'])) {
 }
 
 // Ambil data ujian
-$ujian = $pdo->query("SELECT u.*, m.nama_mapel, k.nama_kelas 
+$ujian = $pdo->query("SELECT u.*, mp.nama_mapel, k.nama_kelas
                      FROM ujian u
-                     JOIN mata_pelajaran mp ON u.mata_pelajaran_id = mp.id
-                     JOIN kelas k ON u.kelas_id = k.id
-                     ORDER BY u.tanggal_ujian DESC")->fetchAll();
+                     JOIN paket_soal ps ON u.paket_soal_id = ps.id
+                     JOIN mata_pelajaran mp ON ps.mata_pelajaran_id = mp.id
+                     LEFT JOIN kelas k ON ps.kelas_id = k.id
+                     ORDER BY u.tanggal_mulai DESC")->fetchAll();
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Manajemen Ujian';
+
+include 'includes/header-modern.php';
 ?>
 
 <div class="content-wrapper">
@@ -96,4 +99,4 @@ include 'includes/sidebar.php';
     </section>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php include 'includes/footer-modern.php'; ?>

@@ -11,13 +11,14 @@ if (!hasRole(['admin', 'operator'])) {
 // Ambil data untuk berita acara
 $ujian_id = $_GET['ujian_id'] ?? 0;
 
-$query = "SELECT u.*, m.nama_mapel, k.nama_kelas, s.nama_sekolah,
-          COUNT(p.id) as jumlah_peserta
+$query = "SELECT u.*, p.nama_paket, m.nama_mapel, k.nama_kelas, s.nama_sekolah,
+          COUNT(ps.id) as jumlah_peserta
           FROM ujian u
-          JOIN mata_pelajaran mp ON u.mata_pelajaran_id = mp.id
-          JOIN kelas k ON u.kelas_id = k.id
+          JOIN paket_soal p ON u.paket_soal_id = p.id
+          JOIN mata_pelajaran m ON p.mata_pelajaran_id = m.id
+          LEFT JOIN kelas k ON p.kelas_id = k.id
           JOIN sekolah s ON k.sekolah_id = s.id
-          LEFT JOIN peserta p ON p.kelas_id = k.id
+          LEFT JOIN peserta ps ON ps.kelas_id = k.id
           WHERE u.id = ?
           GROUP BY u.id";
 

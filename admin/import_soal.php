@@ -1,11 +1,17 @@
 <?php
-session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
+checkLogin();
+if (!hasRole(['admin', 'guru'])) {
+    header('Location: dashboard.php');
+    exit;
+}
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Import Soal';
+
+include 'includes/header-modern.php';
 
 // Proses import jika ada file yang diupload
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['file_excel'])) {
@@ -276,4 +282,4 @@ $paket_soal = $stmt->fetchAll();
     </section>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php include 'includes/footer-modern.php'; ?>

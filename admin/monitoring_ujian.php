@@ -1,23 +1,24 @@
 <?php
-session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// Cek login admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: ../login.php");
-    exit();
+checkLogin();
+if (!hasRole(['admin'])) {
+    header('Location: dashboard.php');
+    exit;
 }
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Monitoring Ujian';
+
+include 'includes/header-modern.php';
 
 // Ambil data ujian yang sedang berlangsung
 $stmt = $pdo->query("
-    SELECT 
+    SELECT
         u.id,
         u.nama as ujian_nama,
-        p.nama as paket_nama,
+        p.nama_paket as paket_nama,
         m.nama_mapel,
         k.nama_kelas,
         COUNT(DISTINCT pu.peserta_id) as total_peserta,
@@ -29,8 +30,8 @@ $stmt = $pdo->query("
     JOIN mata_pelajaran m ON p.mata_pelajaran_id = m.id
     LEFT JOIN kelas k ON p.kelas_id = k.id
     LEFT JOIN peserta_ujian pu ON u.id = pu.ujian_id
-    WHERE u.status = 'aktif' 
-    AND u.tanggal_mulai <= NOW() 
+    WHERE u.status = 'aktif'
+    AND u.tanggal_mulai <= NOW()
     AND u.tanggal_selesai >= NOW()
     GROUP BY u.id
     ORDER BY u.tanggal_mulai DESC
@@ -39,12 +40,12 @@ $ujian_aktif = $stmt->fetchAll();
 
 // Ambil detail peserta yang sedang ujian
 $stmt = $pdo->query("
-    SELECT 
+    SELECT
         su.id as sesi_id,
-        ps.nama as peserta_nama,
+        u.nama_lengkap as peserta_nama,
         ps.nis,
         k.nama_kelas,
-        u.nama as ujian_nama,
+        uj.nama as ujian_nama,
         su.waktu_mulai,
         TIMESTAMPDIFF(MINUTE, su.waktu_mulai, NOW()) as menit_berjalan,
         su.ip_address,
@@ -52,8 +53,9 @@ $stmt = $pdo->query("
         su.status
     FROM sesi_ujian su
     JOIN peserta ps ON su.peserta_id = ps.id
+    JOIN users u ON ps.user_id = u.id
     JOIN kelas k ON ps.kelas_id = k.id
-    JOIN ujian u ON su.ujian_id = u.id
+    JOIN ujian uj ON su.ujian_id = uj.id
     WHERE su.status = 'sedang_ujian'
     ORDER BY su.waktu_mulai ASC
 ");
@@ -330,4 +332,4 @@ document.addEventListener('visibilitychange', function() {
 });
 </script>
 
-<?php include 'includes/footer.php'; ?>
+<?php include 'includes/footer-modern.php'; ?>

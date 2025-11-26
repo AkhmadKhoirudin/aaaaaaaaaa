@@ -1,16 +1,17 @@
 <?php
-session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// Cek login admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: ../login.php");
-    exit();
+checkLogin();
+if (!hasRole(['admin'])) {
+    header('Location: dashboard.php');
+    exit;
 }
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Analisis Nilai';
+
+include 'includes/header-modern.php';
 
 // Ambil filter
 $ujian_id = $_GET['ujian_id'] ?? 0;
@@ -42,11 +43,11 @@ $where_clause = $where ? "WHERE " . implode(" AND ", $where) : "";
 
 // Ambil data nilai
 $stmt = $pdo->prepare("
-    SELECT 
-        ps.nama as peserta_nama,
+    SELECT
+        u.nama_lengkap as peserta_nama,
         ps.nis,
         k.nama_kelas,
-        u.nama as ujian_nama,
+        uj.nama as ujian_nama,
         su.nilai,
         su.benar,
         su.salah,
@@ -56,11 +57,12 @@ $stmt = $pdo->prepare("
         TIMESTAMPDIFF(MINUTE, su.waktu_mulai, su.waktu_selesai) as durasi_menit
     FROM sesi_ujian su
     JOIN peserta ps ON su.peserta_id = ps.id
+    JOIN users u ON ps.user_id = u.id
     JOIN kelas k ON ps.kelas_id = k.id
-    JOIN ujian u ON su.ujian_id = u.id
+    JOIN ujian uj ON su.ujian_id = uj.id
     $where_clause
     AND su.status = 'selesai'
-    ORDER BY k.nama_kelas, ps.nama
+    ORDER BY k.nama_kelas, u.nama_lengkap
 ");
 $stmt->execute($params);
 $nilai_data = $stmt->fetchAll();
@@ -464,4 +466,4 @@ $(document).ready(function() {
 });
 </script>
 
-<?php include 'includes/footer.php'; ?>
+<?php include 'includes/footer-modern.php'; ?>

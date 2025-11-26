@@ -1,16 +1,17 @@
 <?php
-session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// Cek login admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 'admin') {
-    header("Location: ../login.php");
-    exit();
+checkLogin();
+if (!hasRole(['admin'])) {
+    header('Location: dashboard.php');
+    exit;
 }
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+// Set page title
+$page_title = 'Cetak Kartu Peserta';
+
+include 'includes/header-modern.php';
 
 // Ambil data untuk filter
 $stmt = $pdo->query("SELECT id, nama FROM ujian ORDER BY nama");
@@ -41,29 +42,26 @@ if (isset($_POST['cetak'])) {
     $where_clause = $where ? "WHERE " . implode(" AND ", $where) : "";
     
     $stmt = $pdo->prepare("
-        SELECT 
-            ps.nama,
+        SELECT DISTINCT
+            u.nama_lengkap as nama,
             ps.nis,
             ps.nisn,
             k.nama_kelas,
-            u.nama as ujian_nama,
-            u.tanggal_mulai,
-            u.tanggal_selesai,
-            p.nama_paket,
-            m.nama_mapel,
-            ru.kode_ruang,
-            ru.nama_ruang,
-            pu.token_ujian
-        FROM peserta_ujian pu
-        JOIN peserta ps ON pu.peserta_id = ps.id
+            u.username,
+            ps.token_ujian,
+            GROUP_CONCAT(DISTINCT uj.nama SEPARATOR ', ') as ujian_nama,
+            GROUP_CONCAT(DISTINCT ru.kode_ruang SEPARATOR ', ') as kode_ruang,
+            GROUP_CONCAT(DISTINCT ru.nama_ruang SEPARATOR ', ') as nama_ruang
+        FROM peserta ps
+        JOIN users u ON ps.user_id = u.id
         JOIN kelas k ON ps.kelas_id = k.id
-        JOIN ujian u ON pu.ujian_id = u.id
-        JOIN paket_soal p ON u.paket_soal_id = p.id
-        JOIN mata_pelajaran m ON p.mata_pelajaran_id = m.id
-        LEFT JOIN jadwal_ujian ju ON u.id = ju.paket_soal_id
+        LEFT JOIN peserta_ujian pu ON ps.id = pu.peserta_id
+        LEFT JOIN ujian uj ON pu.ujian_id = uj.id
+        LEFT JOIN jadwal_ujian ju ON uj.id = ju.ujian_id
         LEFT JOIN ruang_ujian ru ON ju.ruang_ujian_id = ru.id
         $where_clause
-        ORDER BY k.nama_kelas, ps.nama
+        GROUP BY ps.id, u.nama_lengkap, ps.nis, ps.nisn, k.nama_kelas, u.username, ps.token_ujian
+        ORDER BY k.nama_kelas, u.nama_lengkap
     ");
     $stmt->execute($params);
     $peserta = $stmt->fetchAll();
@@ -169,6 +167,8 @@ if (isset($_POST['cetak'])) {
                                             <p style="margin: 2px 0;"><strong>Kelas:</strong> XII RPL 1</p>
                                             <p style="margin: 2px 0;"><strong>Ujian:</strong> Matematika</p>
                                             <p style="margin: 2px 0;"><strong>Ruang:</strong> A101</p>
+                                            <p style="margin: 2px 0;"><strong>Username:</strong> 1234567890</p>
+                                            <p style="margin: 2px 0;"><strong>Password:</strong> 1234567890</p>
                                         </div>
                                         <div class="col-4 text-center">
                                             <div style="border: 1px solid #ccc; width: 80px; height: 100px; margin: 0 auto;">
@@ -179,6 +179,9 @@ if (isset($_POST['cetak'])) {
                                     <div class="text-center mt-2">
                                         <small><strong>Token:</strong> ABC123XYZ</small>
                                     </div>
+                                    <div class="text-center mt-1" style="font-size: 10px; background: #d4edda; padding: 2px; border: 1px solid #c3e6cb;">
+                                        <strong>Login:</strong> Username: 1234567890 | Password: 1234567890
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -187,7 +190,7 @@ if (isset($_POST['cetak'])) {
                             <ul>
                                 <li>Ukuran: 350 x 200 px</li>
                                 <li>Berisi data peserta lengkap</li>
-                                <li>Dilengkapi foto dan token ujian</li>
+                                <li>Dilengkapi foto, token ujian, dan login info</li>
                                 <li>Format siap cetak</li>
                                 <li>Bisa dicetak dalam jumlah banyak</li>
                             </ul>
@@ -199,4 +202,4 @@ if (isset($_POST['cetak'])) {
     </section>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php include 'includes/footer-modern.php'; ?>
